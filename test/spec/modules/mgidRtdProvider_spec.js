@@ -1,6 +1,6 @@
 import { mgidSubmodule, storage } from '../../../modules/mgidRtdProvider.js';
 import {expect} from 'chai';
-import * as refererDetection from '../../../src/refererDetection';
+import * as refererDetection from '../../../src/refererDetection.js';
 import {server} from '../../mocks/xhr.js';
 
 describe('Mgid RTD submodule', () => {
@@ -33,7 +33,7 @@ describe('Mgid RTD submodule', () => {
     expect(mgidSubmodule.init({})).to.be.false;
   });
 
-  it('getBidRequestData send all params to our endpoint and succesfully modifies ortb2', () => {
+  it('getBidRequestData send all params to our endpoint and successfully modifies ortb2', () => {
     const responseObj = {
       userSegments: ['100', '200'],
       userSegtax: 5,

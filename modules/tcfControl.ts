@@ -9,29 +9,29 @@ import * as events from '../src/events.js';
 import {EVENTS} from '../src/constants.js';
 import {GDPR_GVLIDS, VENDORLESS_GVLID} from '../src/consentHandler.js';
 import {
-    MODULE_TYPE_ANALYTICS,
-    MODULE_TYPE_BIDDER,
-    MODULE_TYPE_PREBID,
-    MODULE_TYPE_RTD,
-    MODULE_TYPE_UID
+  MODULE_TYPE_ANALYTICS,
+  MODULE_TYPE_BIDDER,
+  MODULE_TYPE_PREBID,
+  MODULE_TYPE_RTD,
+  MODULE_TYPE_UID
 } from '../src/activities/modules.js';
 import {
-    ACTIVITY_PARAM_ANL_CONFIG,
-    ACTIVITY_PARAM_COMPONENT_NAME,
-    ACTIVITY_PARAM_COMPONENT_TYPE
+  ACTIVITY_PARAM_ANL_CONFIG,
+  ACTIVITY_PARAM_COMPONENT_NAME,
+  ACTIVITY_PARAM_COMPONENT_TYPE
 } from '../src/activities/params.js';
 import {registerActivityControl} from '../src/activities/rules.js';
 import {
-    ACTIVITY_ACCESS_DEVICE,
-    ACTIVITY_ACCESS_REQUEST_CREDENTIALS,
-    ACTIVITY_ENRICH_EIDS,
-    ACTIVITY_ENRICH_UFPD,
-    ACTIVITY_FETCH_BIDS,
-    ACTIVITY_REPORT_ANALYTICS,
-    ACTIVITY_SYNC_USER,
-    ACTIVITY_TRANSMIT_EIDS,
-    ACTIVITY_TRANSMIT_PRECISE_GEO,
-    ACTIVITY_TRANSMIT_UFPD
+  ACTIVITY_ACCESS_DEVICE,
+  ACTIVITY_ACCESS_REQUEST_CREDENTIALS,
+  ACTIVITY_ENRICH_EIDS,
+  ACTIVITY_ENRICH_UFPD,
+  ACTIVITY_FETCH_BIDS,
+  ACTIVITY_REPORT_ANALYTICS,
+  ACTIVITY_SYNC_USER,
+  ACTIVITY_TRANSMIT_EIDS,
+  ACTIVITY_TRANSMIT_PRECISE_GEO,
+  ACTIVITY_TRANSMIT_UFPD
 } from '../src/activities/activities.js';
 import {processRequestOptions} from '../src/ajax.js';
 
@@ -65,7 +65,8 @@ const CONFIGURABLE_RULES = {
       purpose: 'basicAds',
       enforcePurpose: true,
       enforceVendor: true,
-      vendorExceptions: []
+      vendorExceptions: [],
+      deferS2Sbidders: false
     }
   },
   personalizedAds: {
@@ -126,13 +127,13 @@ const LI_PURPOSES = [2];
 const PUBLISHER_LI_PURPOSES = [2, 7, 9, 10];
 
 declare module '../src/config' {
-    interface Config {
-        /**
-         * Map from module name to that module's GVL ID. This overrides the GVL ID provided
-         * by the modules themselves.
-         */
-        gvlMapping?: { [moduleName: string]: number }
-    }
+  interface Config {
+    /**
+     * Map from module name to that module's GVL ID. This overrides the GVL ID provided
+     * by the modules themselves.
+     */
+    gvlMapping?: { [moduleName: string]: number }
+  }
 }
 /**
  * Retrieve a module's GVL ID.
@@ -228,7 +229,7 @@ function getConsent(consentData, type, purposeNo, gvlId) {
  * @param {number=} gvlId - GVL ID for the module
  * @returns {boolean}
  */
-export function validateRules(rule, consentData, currentModule, gvlId) {
+export function validateRules(rule, consentData, currentModule, gvlId, params = {}) {
   const ruleOptions = CONFIGURABLE_RULES[rule.purpose];
 
   // return 'true' if vendor present in 'vendorExceptions'
@@ -236,8 +237,9 @@ export function validateRules(rule, consentData, currentModule, gvlId) {
     return true;
   }
   const vendorConsentRequred = rule.enforceVendor && !((gvlId === VENDORLESS_GVLID || (rule.softVendorExceptions || []).includes(currentModule)));
+  const deferS2Sbidders = params['isS2S'] && rule.purpose === 'basicAds' && rule.deferS2Sbidders && !gvlId;
   const {purpose, vendor} = getConsent(consentData, ruleOptions.type, ruleOptions.id, gvlId);
-  return (!rule.enforcePurpose || purpose) && (!vendorConsentRequred || vendor);
+  return (!rule.enforcePurpose || purpose) && (!vendorConsentRequred || deferS2Sbidders || vendor);
 }
 
 function gdprRule(purposeNo, checkConsent, blocked = null, gvlidFallback: any = () => null) {
@@ -247,7 +249,7 @@ function gdprRule(purposeNo, checkConsent, blocked = null, gvlidFallback: any = 
 
     if (shouldEnforce(consentData, purposeNo, modName)) {
       const gvlid = getGvlid(params[ACTIVITY_PARAM_COMPONENT_TYPE], modName, gvlidFallback(params));
-      const allow = !!checkConsent(consentData, modName, gvlid);
+      const allow = !!checkConsent(consentData, modName, gvlid, params);
       if (!allow) {
         blocked && blocked.add(modName);
         return {allow};
@@ -257,7 +259,7 @@ function gdprRule(purposeNo, checkConsent, blocked = null, gvlidFallback: any = 
 }
 
 function singlePurposeGdprRule(purposeNo, blocked = null, gvlidFallback: any = () => null) {
-  return gdprRule(purposeNo, (cd, modName, gvlid) => !!validateRules(ACTIVE_RULES.purpose[purposeNo], cd, modName, gvlid), blocked, gvlidFallback);
+  return gdprRule(purposeNo, (cd, modName, gvlid, params) => !!validateRules(ACTIVE_RULES.purpose[purposeNo], cd, modName, gvlid, params), blocked, gvlidFallback);
 }
 
 function exceptPrebidModules(ruleFn) {
@@ -337,47 +339,47 @@ function emitTCF2FinalResults() {
 events.on(EVENTS.AUCTION_END, emitTCF2FinalResults);
 
 type TCFControlRule = {
-    purpose: keyof typeof CONFIGURABLE_RULES;
-    /**
-     * Determines whether to enforce the purpose consent.
-     */
-    enforcePurpose?: boolean;
-    /**
-     * Determines whether to check vendor signals for this purpose.
-     */
-    enforceVendor?: boolean;
-    /**
-     * Defines a list of bidder codes or module names that are exempt from determining legal basis for this Purpose.
-     * Note: Prebid.org recommends working with a privacy lawyer before making enforcement exceptions for any vendor.
-     */
-    vendorExceptions?: string[]
-    /**
-     * Defines a list of bidder codes or module names that are exempt from the checking vendor signals for this purpose.
-     * Unlike with vendorExceptions, Purpose consent is still checked.
-     * Note: Prebid.org recommends working with a privacy lawyer before making enforcement exceptions for any vendor.
-     */
-    softVendorExceptions?: string[]
-    /**
-     * Only relevant when `purpose` is  `'personalizedAds'`.
-     * If true, user IDs and EIDs will not be shared without evidence of consent for TCF Purpose 4.
-     * If false (the default), evidence of consent for any of Purposes 2-10 is sufficient for sharing user IDs and EIDs.
-     */
-    eidsRequireP4Consent?: boolean;
+  purpose: keyof typeof CONFIGURABLE_RULES;
+  /**
+   * Determines whether to enforce the purpose consent.
+   */
+  enforcePurpose?: boolean;
+  /**
+   * Determines whether to check vendor signals for this purpose.
+   */
+  enforceVendor?: boolean;
+  /**
+   * Defines a list of bidder codes or module names that are exempt from determining legal basis for this Purpose.
+   * Note: Prebid.org recommends working with a privacy lawyer before making enforcement exceptions for any vendor.
+   */
+  vendorExceptions?: string[]
+  /**
+   * Defines a list of bidder codes or module names that are exempt from the checking vendor signals for this purpose.
+   * Unlike with vendorExceptions, Purpose consent is still checked.
+   * Note: Prebid.org recommends working with a privacy lawyer before making enforcement exceptions for any vendor.
+   */
+  softVendorExceptions?: string[]
+  /**
+   * Only relevant when `purpose` is  `'personalizedAds'`.
+   * If true, user IDs and EIDs will not be shared without evidence of consent for TCF Purpose 4.
+   * If false (the default), evidence of consent for any of Purposes 2-10 is sufficient for sharing user IDs and EIDs.
+   */
+  eidsRequireP4Consent?: boolean;
 }
 
 declare module '../src/consentHandler' {
-    interface ConsentManagementConfig {
-        /**
-         * If false (the default), allows some use of storage regardless of purpose 1 consent.
-         */
-        [STRICT_STORAGE_ENFORCEMENT]?: boolean;
-    }
+  interface ConsentManagementConfig {
+    /**
+     * If false (the default), allows some use of storage regardless of purpose 1 consent.
+     */
+    [STRICT_STORAGE_ENFORCEMENT]?: boolean;
+  }
 
 }
 declare module './consentManagementTcf' {
-    interface TCFConfig {
-        rules?: TCFControlRule[];
-    }
+  interface TCFConfig {
+    rules?: TCFControlRule[];
+  }
 }
 
 /**

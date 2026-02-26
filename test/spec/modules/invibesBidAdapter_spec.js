@@ -1,6 +1,7 @@
 import {expect} from 'chai';
 import { config } from 'src/config.js';
 import {spec, resetInvibes, stubDomainOptions, readGdprConsent, storage} from 'modules/invibesBidAdapter.js';
+import {getGlobal} from '../../../src/prebidGlobal.js';
 
 describe('invibesBidAdapter:', function () {
   const BIDDER_CODE = 'invibes';
@@ -180,7 +181,7 @@ describe('invibesBidAdapter:', function () {
     config.setConfig({
       deviceAccess: true
     });
-    $$PREBID_GLOBAL$$.bidderSettings = {
+    getGlobal().bidderSettings = {
       invibes: {
         storageAllowed: true
       }
@@ -191,7 +192,7 @@ describe('invibesBidAdapter:', function () {
 
   beforeEach(function () {
     resetInvibes();
-    $$PREBID_GLOBAL$$.bidderSettings = {
+    getGlobal().bidderSettings = {
       invibes: {
         storageAllowed: true
       }
@@ -202,7 +203,7 @@ describe('invibesBidAdapter:', function () {
   });
 
   afterEach(function () {
-    $$PREBID_GLOBAL$$.bidderSettings = {};
+    getGlobal().bidderSettings = {};
     this.cStub1.restore();
     sandbox.restore();
   });
@@ -339,7 +340,7 @@ describe('invibesBidAdapter:', function () {
     });
 
     it('sends bid request to default endpoint 1 via GET', function () {
-    const request = spec.buildRequests([{
+      const request = spec.buildRequests([{
         bidId: 'b1',
         bidder: BIDDER_CODE,
         params: {
@@ -443,7 +444,10 @@ describe('invibesBidAdapter:', function () {
     it('has capped ids if local storage variable is correctly formatted', function () {
       top.window.invibes.optIn = 1;
       top.window.invibes.purposes = [true, false, false, false, false, false, false, false, false, false];
-      localStorage.ivvcap = '{"9731":[1,1768600800000]}';
+      const now = new Date().getTime();
+      localStorage.ivvcap = JSON.stringify({
+        9731: [1, now + (24 * 60 * 60 * 1000)]
+      })
       SetBidderAccess();
 
       const request = spec.buildRequests(bidRequests, bidderRequestWithPageInfo);
@@ -1259,7 +1263,7 @@ describe('invibesBidAdapter:', function () {
         AuctionStartTime: Date.now(),
         CreativeHtml: '<!-- Creative -->'
       },
-    UseAdUnitCode: true
+      UseAdUnitCode: true
     };
 
     var buildResponse = function(placementId, cid, blcids, creativeId, ShouldSetLId) {

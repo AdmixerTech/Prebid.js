@@ -3,11 +3,13 @@ const lintImports = require('eslint-plugin-import')
 const neostandard = require('neostandard')
 const globals = require('globals');
 const prebid = require('./plugins/eslint/index.js');
+const chaiFriendly = require('eslint-plugin-chai-friendly');
 const {includeIgnoreFile} = require('@eslint/compat');
 const path = require('path');
 const _ = require('lodash');
 const tseslint = require('typescript-eslint');
-const {getSourceFolders, getIgnoreSources} = require('./gulpHelpers.js');
+const {getSourceFolders} = require('./gulpHelpers.js');
+const APPROVED_LOAD_EXTERNAL_SCRIPT_PATHS = require('./plugins/eslint/approvedLoadExternalScriptPaths.js');
 
 function jsPattern(name) {
   return [`${name}/**/*.js`, `${name}/**/*.mjs`]
@@ -32,6 +34,13 @@ const allowedImports = {
     'dlv',
     'dset'
   ],
+  // [false] means disallow ANY import outside of modules/debugging
+  // this is because debugging also gets built as a standalone module,
+  // and importing global state does not work as expected.
+  // in theory imports that do not involve global state are fine, but
+  // even innocuous imports can become problematic if the source changes,
+  // and it's too easy to forget this is a problem for debugging-standalone.
+  'modules/debugging': [false],
   libraries: [],
   creative: [],
 }
@@ -55,11 +64,12 @@ module.exports = [
   includeIgnoreFile(path.resolve(__dirname, '.gitignore')),
   {
     ignores: [
-      ...getIgnoreSources(),
       'integrationExamples/**/*',
       // do not lint build-related stuff
       '*.js',
+      '*.mjs',
       'metadata/**/*',
+      'customize/**/*',
       ...jsPattern('plugins'),
       ...jsPattern('.github'),
     ],
@@ -98,21 +108,36 @@ module.exports = [
     rules: {
       'comma-dangle': 'off',
       semi: 'off',
+      'no-undef': 2,
+      'no-console': 'error',
       'space-before-function-paren': 'off',
       'import/extensions': ['error', 'ignorePackages'],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "FunctionDeclaration[id.name=/^log(Message|Info|Warn|Error|Result)$/]",
+          message: "Defining a function named 'logResult, 'logMessage', 'logInfo', 'logWarn', or 'logError' is not allowed."
+        },
+        {
+          selector: "VariableDeclarator[id.name=/^log(Message|Info|Warn|Error|Result)$/][init.type=/FunctionExpression|ArrowFunctionExpression/]",
+          message: "Assigning a function to 'logResult, 'logMessage', 'logInfo', 'logWarn', or 'logError' is not allowed."
+        },
+      ],
+      'no-restricted-imports': [
+        'error', {
+          patterns: [
+            '**/src/adloader.js'
+          ]
+        }
+      ],
 
       // Exceptions below this line are temporary (TM), so that eslint can be added into the CI process.
       // Violations of these styles should be fixed, and the exceptions removed over time.
       //
       // See Issue #1111.
       // also see: reality. These are here to stay.
+      // we're working on them though :)
 
-      eqeqeq: 'off',
-      'no-return-assign': 'off',
-      'no-throw-literal': 'off',
-      'no-undef': 2,
-      'no-useless-escape': 'off',
-      'no-console': 'error',
       'jsdoc/check-types': 'off',
       'jsdoc/no-defaults': 'off',
       'jsdoc/newline-after-description': 'off',
@@ -133,9 +158,7 @@ module.exports = [
       'jsdoc/require-yields-check': 'off',
       'jsdoc/tag-lines': 'off',
       'no-var': 'off',
-      'no-empty': 'off',
       'no-void': 'off',
-      'array-callback-return': 'off',
       'prefer-const': 'off',
       'no-prototype-builtins': 'off',
       'object-shorthand': 'off',
@@ -151,11 +174,9 @@ module.exports = [
       '@stylistic/multiline-ternary': 'off',
       '@stylistic/computed-property-spacing': 'off',
       '@stylistic/lines-between-class-members': 'off',
-      '@stylistic/indent': 'off',
       '@stylistic/comma-dangle': 'off',
       '@stylistic/object-curly-newline': 'off',
       '@stylistic/object-property-newline': 'off',
-
     }
   },
   ...Object.entries(allowedImports).map(([path, allowed]) => {
@@ -220,6 +241,9 @@ module.exports = [
   },
   {
     files: sourcePattern('test'),
+    plugins: {
+      'chai-friendly': chaiFriendly
+    },
     languageOptions: {
       globals: {
         ...globals.mocha,
@@ -228,16 +252,15 @@ module.exports = [
       }
     },
     rules: {
-      // tests were not subject to many rules and they are now a nightmare
       'no-template-curly-in-string': 'off',
       'no-unused-expressions': 'off',
-      'one-var': 'off',
+      'chai-friendly/no-unused-expressions': 'error',
+      // tests were not subject to many rules and they are now a nightmare. rules below this line should be removed over time
       'no-undef': 'off',
       'no-unused-vars': 'off',
-      'import/extensions': 'off',
-      'camelcase': 'off',
-      'no-global-assign': 'off',
-      'default-case-last': 'off'
+      'no-useless-escape': 'off',
+      'no-return-assign': 'off',
+      'camelcase': 'off'
     }
   },
   {
@@ -258,4 +281,22 @@ module.exports = [
       '@typescript-eslint/no-require-imports': 'off'
     }
   },
-]
+  // Override: allow loadExternalScript import in approved files (excluding BidAdapters)
+  {
+    files: APPROVED_LOAD_EXTERNAL_SCRIPT_PATHS.filter(p => !p.includes('BidAdapter')).map(p => {
+      // If path doesn't end with .js/.ts/.mjs, treat as folder pattern
+      if (!p.match(/\.(js|ts|mjs)$/)) {
+        return `${p}/**/*.{js,ts,mjs}`;
+      }
+      return p;
+    }),
+      rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: []
+        }
+      ],
+      }
+  },
+  ]

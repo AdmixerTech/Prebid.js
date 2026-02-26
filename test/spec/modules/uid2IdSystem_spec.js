@@ -35,7 +35,7 @@ const makeUid2IdentityContainer = (token) => ({uid2: {id: token}});
 const makeUid2OptoutContainer = (token) => ({uid2: {optout: true}});
 let useLocalStorage = false;
 const makePrebidConfig = (params = null, extraSettings = {}, debug = false) => ({
-  userSync: { auctionDelay: auctionDelayMs, userIds: [{name: 'uid2', params: {storage: useLocalStorage ? 'localStorage' : 'cookie', ...params}}] }, debug, ...extraSettings
+  userSync: { auctionDelay: extraSettings.auctionDelay ?? auctionDelayMs, ...(extraSettings.syncDelay !== undefined && {syncDelay: extraSettings.syncDelay}), userIds: [{name: 'uid2', params: {storage: useLocalStorage ? 'localStorage' : 'cookie', ...params}}] }, debug
 });
 const makeOriginalIdentity = (identity, salt = 1) => ({
   identity: utils.cyrb53Hash(identity, salt),
@@ -102,7 +102,7 @@ const testCookieAndLocalStorage = (description, test, only = false) => {
 };
 
 describe(`UID2 module`, function () {
-  let suiteSandbox, testSandbox, timerSpy, fullTestTitle, restoreSubtleToUndefined = false;
+  let suiteSandbox; let testSandbox; let timerSpy; let fullTestTitle; let restoreSubtleToUndefined = false;
   before(function () {
     timerSpy = configureTimerInterceptors(debugOutput);
     hook.ready();
@@ -253,9 +253,9 @@ describe(`UID2 module`, function () {
       config.setConfig(makePrebidConfig(legacyConfigParams));
       const bid2 = await runAuction();
 
-        const first = findUid2(bid);
-        const second = findUid2(bid2);
-        expect(first && second && first.uids[0].id).to.equal(second.uids[0].id);
+      const first = findUid2(bid);
+      const second = findUid2(bid2);
+      expect(first && second && first.uids[0].id).to.equal(second.uids[0].id);
     });
   });
 

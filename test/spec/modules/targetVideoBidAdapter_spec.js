@@ -7,6 +7,13 @@ describe('TargetVideo Bid Adapter', function() {
   const params = {
     placementId: 12345,
   };
+  const videoMediaTypes = {
+    video: {
+      playerSize: [[640, 360]],
+      context: 'instream',
+      playbackmethod: [1, 2, 3, 4]
+    }
+  }
 
   const defaultBidderRequest = {
     bidderRequestId: 'mock-uuid',
@@ -25,13 +32,7 @@ describe('TargetVideo Bid Adapter', function() {
   const videoRequest = [{
     bidder,
     params,
-    mediaTypes: {
-      video: {
-        playerSize: [[640, 360]],
-        context: 'instream',
-        playbackmethod: [1, 2, 3, 4]
-      }
-    }
+    mediaTypes: videoMediaTypes,
   }];
 
   it('Test the bid validation function', function() {
@@ -97,6 +98,22 @@ describe('TargetVideo Bid Adapter', function() {
     expect(payload).to.not.be.empty;
     expect(payload.source.ext.schain).to.exist;
     expect(payload.source.ext.schain).to.deep.equal(globalSchain);
+  });
+
+  it('Test the VIDEO request gpid and tid', function () {
+    const gpid = '/123/test-gpid';
+    const tid = '123-test-tid';
+
+    const videoRequestCloned = deepClone(videoRequest);
+    videoRequestCloned[0].ortb2Imp = { ext: { gpid, tid } };
+    videoRequestCloned[0].ortb2 = { source: { tid } };
+
+    const request = spec.buildRequests(videoRequestCloned, defaultBidderRequest);
+    const payload = JSON.parse(request[0].data);
+
+    expect(payload.imp[0].ext.gpid).to.exist.and.equal(gpid);
+    expect(payload.imp[0].ext.tid).to.exist.and.equal(tid);
+    expect(payload.source.tid).to.exist.and.equal(tid);
   });
 
   it('Test the VIDEO request eids and user data sending', function() {
@@ -336,5 +353,44 @@ describe('TargetVideo Bid Adapter', function() {
   it('Test userSyncs iframeEnabled=false', function () {
     const userSyncs = spec.getUserSyncs({iframeEnabled: false});
     expect(userSyncs).to.have.lengthOf(0);
+  });
+
+  it('Test the VIDEO request floor param', function() {
+    const requests = [
+      {
+        bidder,
+        params: {
+          ...params,
+          floor: 2.12,
+        },
+        mediaTypes: videoMediaTypes,
+      },
+      {
+        bidder,
+        params: {
+          ...params,
+          floor: "1.55",
+        },
+        mediaTypes: videoMediaTypes,
+      },
+      {
+        bidder,
+        params: {
+          ...params,
+          floor: "abc",
+        },
+        mediaTypes: videoMediaTypes,
+      }
+    ]
+
+    const bids = spec.buildRequests(requests, defaultBidderRequest)
+
+    const payload1 = JSON.parse(bids[0].data);
+    const payload2 = JSON.parse(bids[1].data);
+    const payload3 = JSON.parse(bids[2].data);
+
+    expect(payload1.imp[0].bidfloor).to.exist.and.equal(2.12);
+    expect(payload2.imp[0].bidfloor).to.exist.and.equal(1.55);
+    expect(payload3.imp[0].bidfloor).to.not.exist;
   });
 });

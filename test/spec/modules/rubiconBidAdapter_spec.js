@@ -3,7 +3,6 @@ import {
   spec,
   getPriceGranularity,
   masSizeOrdering,
-  resetUserSync,
   classifiedAsVideo,
   resetRubiConf,
   resetImpIdMap,
@@ -19,6 +18,7 @@ import 'modules/multibid/index.js';
 import adapterManager from 'src/adapterManager.js';
 import {addFPDToBidderRequest} from '../../helpers/fpd.js';
 import { deepClone } from '../../../src/utils.js';
+import {getGlobal} from '../../../src/prebidGlobal.js';
 
 const INTEGRATION = `pbjs_lite_v$prebid.version$`; // $prebid.version$ will be substituted in by gulp in built prebid
 const PBS_INTEGRATION = 'pbjs';
@@ -487,7 +487,7 @@ describe('the rubicon adapter', function () {
     config.resetConfig();
     resetRubiConf();
     resetImpIdMap();
-    delete $$PREBID_GLOBAL$$.installedModules;
+    delete getGlobal().installedModules;
   });
 
   describe('MAS mapping / ordering', function () {
@@ -1039,13 +1039,13 @@ describe('the rubicon adapter', function () {
                   'ext': { 'segtax': 1 },
                   'segment': [
                     { 'id': '987' }
-        ]
-      }, {
-        'name': 'www.dataprovider1.com',
-        'ext': { 'segtax': 2 },
-        'segment': [
-          { 'id': '432' }
-        ]
+                  ]
+                }, {
+                  'name': 'www.dataprovider1.com',
+                  'ext': { 'segtax': 2 },
+                  'segment': [
+                    { 'id': '432' }
+                  ]
                 }, {
                   'name': 'www.dataprovider1.com',
                   'ext': { 'segtax': 5 },
@@ -1815,7 +1815,7 @@ describe('the rubicon adapter', function () {
             })
           })
 
-          it('should send gpid and pbadslot since it is prefered over dfp code', function () {
+          it('should send gpid and pbadslot since it is preferred over dfp code', function () {
             bidderRequest.bids[0].ortb2Imp = {
               ext: {
                 gpid: '/1233/sports&div1',
@@ -2165,7 +2165,7 @@ describe('the rubicon adapter', function () {
             expect(imp.ext.prebid.bidder.rubicon.video.skipafter).to.equal(15);
             expect(post.ext.prebid.auctiontimestamp).to.equal(1472239426000);
             // should contain version
-            expect(post.ext.prebid.channel).to.deep.equal({name: 'pbjs', version: $$PREBID_GLOBAL$$.version});
+            expect(post.ext.prebid.channel).to.deep.equal({name: 'pbjs', version: getGlobal().version});
             expect(post.user.ext.consent).to.equal('BOJ/P2HOJ/P2HABABMAAAAAZ+A==');
             // EIDs should exist
             expect(post.user.ext).to.have.property('eids').that.is.an('array');
@@ -2379,7 +2379,7 @@ describe('the rubicon adapter', function () {
 
           it('should pass client analytics to PBS endpoint if all modules included', function () {
             const bidderRequest = createVideoBidderRequest();
-            $$PREBID_GLOBAL$$.installedModules = [];
+            getGlobal().installedModules = [];
             const [request] = spec.buildRequests(bidderRequest.bids, bidderRequest);
             const payload = request.data;
 
@@ -2389,7 +2389,7 @@ describe('the rubicon adapter', function () {
 
           it('should pass client analytics to PBS endpoint if rubicon analytics adapter is included', function () {
             const bidderRequest = createVideoBidderRequest();
-            $$PREBID_GLOBAL$$.installedModules = ['rubiconBidAdapter', 'rubiconAnalyticsAdapter'];
+            getGlobal().installedModules = ['rubiconBidAdapter', 'rubiconAnalyticsAdapter'];
             const [request] = spec.buildRequests(bidderRequest.bids, bidderRequest);
             const payload = request.data;
 
@@ -2399,7 +2399,7 @@ describe('the rubicon adapter', function () {
 
           it('should not pass client analytics to PBS endpoint if rubicon analytics adapter is not included', function () {
             const bidderRequest = createVideoBidderRequest();
-            $$PREBID_GLOBAL$$.installedModules = ['rubiconBidAdapter'];
+            getGlobal().installedModules = ['rubiconBidAdapter'];
             const [request] = spec.buildRequests(bidderRequest.bids, bidderRequest);
             const payload = request.data;
 
@@ -2888,88 +2888,6 @@ describe('the rubicon adapter', function () {
           bidderRequest.bids[0].params.keywords = 'a,b,c';
           const slotParams = spec.createSlotParams(bidderRequest.bids[0], bidderRequest);
           expect(slotParams.kw).to.equal('a,b,c');
-        });
-
-        it('should pass along o_ae param when fledge is enabled', () => {
-          const localBidRequest = Object.assign({}, bidderRequest.bids[0]);
-          localBidRequest.ortb2Imp.ext.ae = true;
-
-          const slotParams = spec.createSlotParams(localBidRequest, bidderRequest);
-
-          expect(slotParams['o_ae']).to.equal(1)
-        });
-
-        it('should pass along desired segtaxes, but not non-desired ones', () => {
-          const localBidderRequest = Object.assign({}, bidderRequest);
-          localBidderRequest.refererInfo = {domain: 'bob'};
-          config.setConfig({
-            rubicon: {
-              sendUserSegtax: [9],
-              sendSiteSegtax: [10]
-            }
-          });
-          localBidderRequest.ortb2.user = {
-            data: [{
-              ext: {
-                segtax: '404'
-              },
-              segment: [{id: 5}, {id: 6}]
-            }, {
-              ext: {
-                segtax: '508'
-              },
-              segment: [{id: 5}, {id: 2}]
-            }, {
-              ext: {
-                segtax: '9'
-              },
-              segment: [{id: 1}, {id: 2}]
-            }]
-          }
-          localBidderRequest.ortb2.site = {
-            content: {
-              data: [{
-                ext: {
-                  segtax: '10'
-                },
-                segment: [{id: 2}, {id: 3}]
-              }, {
-                ext: {
-                  segtax: '507'
-                },
-                segment: [{id: 3}, {id: 4}]
-              }]
-            }
-          }
-          const slotParams = spec.createSlotParams(bidderRequest.bids[0], localBidderRequest);
-          expect(slotParams['tg_i.tax507']).is.equal('3,4');
-          expect(slotParams['tg_v.tax508']).is.equal('5,2');
-          expect(slotParams['tg_v.tax9']).is.equal('1,2');
-          expect(slotParams['tg_i.tax10']).is.equal('2,3');
-          expect(slotParams['tg_v.tax404']).is.equal(undefined);
-        });
-
-        it('should support IAB segtax 7 in site segments', () => {
-          const localBidderRequest = Object.assign({}, bidderRequest);
-          localBidderRequest.refererInfo = {domain: 'bob'};
-          config.setConfig({
-            rubicon: {
-              sendUserSegtax: [4],
-              sendSiteSegtax: [1, 2, 5, 6, 7]
-            }
-          });
-          localBidderRequest.ortb2.site = {
-            content: {
-              data: [{
-                ext: {
-                  segtax: '7'
-                },
-                segment: [{id: 8}, {id: 9}]
-              }]
-            }
-          };
-          const slotParams = spec.createSlotParams(bidderRequest.bids[0], localBidderRequest);
-          expect(slotParams['tg_i.tax7']).to.equal('8,9');
         });
 
         it('should add p_site.mobile if mobile is a number in ortb2.site', function () {
@@ -3816,43 +3734,6 @@ describe('the rubicon adapter', function () {
           expect(bids).to.be.lengthOf(0);
         });
 
-        it('Should support recieving an auctionConfig and pass it along to Prebid', function () {
-          const response = {
-            'status': 'ok',
-            'account_id': 14062,
-            'site_id': 70608,
-            'zone_id': 530022,
-            'size_id': 15,
-            'alt_size_ids': [
-              43
-            ],
-            'tracking': '',
-            'inventory': {},
-            'ads': [{
-              'status': 'ok',
-              'cpm': 0,
-              'size_id': 15
-            }],
-            'component_auction_config': [{
-              'random': 'value',
-              'bidId': '5432'
-            },
-            {
-              'random': 'string',
-              'bidId': '6789'
-            }]
-          };
-
-          const {bids, paapi} = spec.interpretResponse({body: response}, {
-            bidRequest: bidderRequest.bids[0]
-          });
-
-          expect(bids).to.be.lengthOf(1);
-          expect(paapi[0].bidId).to.equal('5432');
-          expect(paapi[0].config.random).to.equal('value');
-          expect(paapi[1].bidId).to.equal('6789');
-        });
-
         it('should handle an error', function () {
           const response = {
             'status': 'ok',
@@ -3977,6 +3858,98 @@ describe('the rubicon adapter', function () {
           });
           expect(bids[0].meta.mediaType).to.equal('banner');
           expect(bids[1].meta.mediaType).to.equal('video');
+        });
+
+        it('should handle primaryCatId and secondaryCatIds when bid.bid_cat is present in response', function () {
+          const response = {
+            'status': 'ok',
+            'account_id': 14062,
+            'site_id': 70608,
+            'zone_id': 530022,
+            'size_id': 15,
+            'alt_size_ids': [
+              43
+            ],
+            'tracking': '',
+            'inventory': {},
+            'ads': [
+              {
+                'status': 'ok',
+                'impression_id': '153dc240-8229-4604-b8f5-256933b9374c',
+                'size_id': '15',
+                'ad_id': '6',
+                'advertiser': 7,
+                'network': 8,
+                'creative_id': 'crid-9',
+                'type': 'script',
+                'script': 'alert(\'foo\')',
+                'campaign_id': 10,
+                'cpm': 0.811,
+                'emulated_format': 'video',
+                'targeting': [
+                  {
+                    'key': 'rpfl_14062',
+                    'values': [
+                      '15_tier_all_test'
+                    ]
+                  }
+                ],
+                'bid_cat': ['IAB1-1']
+              },
+              {
+                'status': 'ok',
+                'impression_id': '153dc240-8229-4604-b8f5-256933b9374d',
+                'size_id': '43',
+                'ad_id': '7',
+                'advertiser': 7,
+                'network': 8,
+                'creative_id': 'crid-9',
+                'type': 'script',
+                'script': 'alert(\'foo\')',
+                'campaign_id': 10,
+                'cpm': 0.911,
+                'targeting': [
+                  {
+                    'key': 'rpfl_14062',
+                    'values': [
+                      '43_tier_all_test'
+                    ]
+                  }
+                ],
+                'bid_cat': ['IAB1-2', 'IAB1-3']
+              },
+              {
+                'status': 'ok',
+                'impression_id': '153dc240-8229-4604-b8f5-256933b9374d',
+                'size_id': '43',
+                'ad_id': '7',
+                'advertiser': 7,
+                'network': 8,
+                'creative_id': 'crid-9',
+                'type': 'script',
+                'script': 'alert(\'foo\')',
+                'campaign_id': 10,
+                'cpm': 10,
+                'targeting': [
+                  {
+                    'key': 'rpfl_14062',
+                    'values': [
+                      '43_tier_all_test'
+                    ]
+                  }
+                ]
+              }
+            ]
+          };
+          const bids = spec.interpretResponse({body: response}, {
+            bidRequest: bidderRequest.bids[0]
+          });
+          expect(bids[0].meta.primaryCatId).to.be.undefined;
+          expect(bids[0].meta.secondaryCatIds).to.be.undefined;
+          expect(bids[1].meta.primaryCatId).to.equal(response.ads[1].bid_cat[0]);
+          expect(bids[1].meta.secondaryCatIds).to.deep.equal(response.ads[1].bid_cat.slice(1));
+          expect(bids[2].meta.primaryCatId).to.equal(response.ads[0].bid_cat[0]);
+          expect(bids[2].meta.secondaryCatIds).to.be.undefined;
         });
 
         describe('singleRequest enabled', function () {
@@ -4449,10 +4422,6 @@ describe('the rubicon adapter', function () {
   describe('user sync', function () {
     const emilyUrl = 'https://eus.rubiconproject.com/usync.html';
 
-    beforeEach(function () {
-      resetUserSync();
-    });
-
     it('should register the Emily iframe', function () {
       const syncs = spec.getUserSyncs({
         iframeEnabled: true
@@ -4461,15 +4430,17 @@ describe('the rubicon adapter', function () {
       expect(syncs).to.deep.equal({type: 'iframe', url: emilyUrl});
     });
 
-    it('should not register the Emily iframe more than once', function () {
+    it('should register the Emily iframe more than once', function () {
       let syncs = spec.getUserSyncs({
         iframeEnabled: true
       });
       expect(syncs).to.deep.equal({type: 'iframe', url: emilyUrl});
 
       // when called again, should still have only been called once
-      syncs = spec.getUserSyncs();
-      expect(syncs).to.equal(undefined);
+      syncs = spec.getUserSyncs({
+        iframeEnabled: true
+      });
+      expect(syncs).to.deep.equal({type: 'iframe', url: emilyUrl});
     });
 
     it('should pass gdpr params if consent is true', function () {
@@ -4722,10 +4693,6 @@ describe('the rubicon adapter', function () {
         }
       });
       config.resetConfig();
-    });
-
-    beforeEach(function () {
-      resetUserSync();
     });
 
     it('should update fastlane endpoint if', function () {
